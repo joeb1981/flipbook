@@ -2,28 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Flipbook Viewer (Solid PDF.js)</title>
+  <title>Flipbook Viewer (Solid PDF.js + Auto-Fit)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <style>
     :root{--bg:#0f172a;--panel:#111827;--ink:#e5e7eb;--ink-dim:#9ca3af;--accent:#38bdf8}
     *{box-sizing:border-box}html,body{margin:0;height:100%}body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
     #app{display:flex;flex-direction:column;height:100vh}
-    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid #1f2937;padding:.5rem .75rem;gap:.5rem;position:sticky;top:0;z-index:10}
+
+    /* Top bar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);
+      border-bottom:1px solid #1f2937;padding:.5rem .75rem;gap:.5rem;position:sticky;top:0;z-index:10}
     .topbar .left,.topbar .right{display:flex;align-items:center;gap:.5rem}
-    .topbar button{background:#1f2937;color:var(--ink);border:1px solid #374151;border-radius:.5rem;padding:.4rem .6rem;cursor:pointer;font-size:14px}
+    .topbar button{background:#1f2937;color:var(--ink);border:1px solid #374151;border-radius:.5rem;
+      padding:.4rem .6rem;cursor:pointer;font-size:14px}
     .topbar button:hover{border-color:var(--accent);color:var(--accent)}
     #pageInfo{color:var(--ink-dim);font-size:14px}
+
+    /* Layout */
     .viewer{flex:1;display:grid;grid-template-columns:240px 1fr;gap:.75rem;padding:.75rem}
     .thumbs{overflow-y:auto;border-right:1px solid #1f2937;padding-right:.5rem}
     .thumbs.hidden{display:none}
-    .flipbook{height:calc(100vh - 72px - 1.5rem);overflow:hidden;display:flex;align-items:center;justify-content:center}
-    .page-view{display:flex;align-items:center;justify-content:center;gap:1rem;max-width:95vw;max-height:100%}
-    .page-view canvas{max-width:48vw;max-height:100%;height:auto;border-radius:10px;background:#111827;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+
+    /* Main area */
+    .flipbook{height:calc(100vh - 72px - 1.5rem); /* header & padding */
+      overflow:auto; /* allow scroll if needed as a fallback */
+      display:flex;align-items:center;justify-content:center}
+    .page-view{display:flex;align-items:center;justify-content:center;gap:1rem;width:100%;height:100%}
+
+    /* Canvases are sized by JS (auto-fit). CSS only gives polish. */
+    .page-view canvas{border-radius:10px;background:#111827;box-shadow:0 6px 24px rgba(0,0,0,.35);height:auto}
+
+    /* Thumbs */
     .page-thumb{display:block;margin:0 0 .5rem;cursor:pointer;border:1px solid #374151;border-radius:.5rem;overflow:hidden}
     .page-thumb img{width:100%;display:block}
     .page-thumb.active{border-color:var(--accent)}
-    @media (max-width:900px){.viewer{grid-template-columns:1fr}.page-view canvas{max-width:95vw}}
+
+    @media (max-width:900px){.viewer{grid-template-columns:1fr}}
     #err{white-space:pre-wrap;background:#7f1d1d;color:#fff;padding:10px;border-radius:8px;margin:.75rem;display:none}
   </style>
 </head>
@@ -57,21 +71,28 @@
 
   <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
-  <script>
-    // IMPORTANT: must match your repo path exactly (case-sensitive)
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
-  </script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";</script>
 
   <script>
-    // ====== Minimal, robust viewer (no flip animation) ======
+    // ====== Auto-Fit PDF.js Viewer (single/spread) ======
     const qs = new URLSearchParams(location.search);
     const pdfParam = qs.get("pdf") || "pdfs/ironworks.pdf";
     const pdfURL = new URL(pdfParam, location.href).href;
 
-    const state = { pdf:null, total:0, scale:1.25, mode:"spread", current:1 };
+    const GAP = 16; // px gap between pages in spread view
+
+    const state = {
+      pdf: null,
+      total: 0,
+      mode: "spread",     // "single" | "spread"
+      current: 1,         // 1-based
+      userZoom: 1,        // user zoom multiplier
+      base: { w: 0, h: 0 } // natural page size at scale=1
+    };
 
     const el = {
       err: document.getElementById("err"),
+      container: document.querySelector(".flipbook"),
       view: document.getElementById("pageView"),
       thumbs: document.getElementById("thumbs"),
       info: document.getElementById("pageInfo"),
@@ -92,43 +113,56 @@
       state.pdf = await pdfjsLib.getDocument({data:bytes}).promise;
       state.total = state.pdf.numPages;
 
+      // read natural page size from page 1 (most docs are uniform)
+      const p1 = await state.pdf.getPage(1);
+      const vp1 = p1.getViewport({ scale: 1 });
+      state.base = { w: vp1.width, h: vp1.height };
+
       await renderThumbs();
       await renderView();
+
       wireUI();
       updateInfo();
+
+      // auto re-fit on resize
+      window.addEventListener("resize", debounce(()=>renderView(), 150));
     }
 
-    async function fetchBytes(url){
-      const r = await fetch(url,{cache:"reload"});
-      if(!r.ok) throw new Error(`Fetch ${r.status} for: ${url}`);
-      return new Uint8Array(await r.arrayBuffer());
+    /* ---------- Fit logic ---------- */
+    function calcFitScale(){
+      const availW = el.container.clientWidth;
+      const availH = el.container.clientHeight;
+      const { w, h } = state.base;
+
+      if (state.mode === "single") {
+        return Math.max(0.1, Math.min(availW / w, availH / h));
+      } else {
+        const perW = (availW - GAP) / 2;
+        return Math.max(0.1, Math.min(perW / w, availH / h));
+      }
     }
 
-    function showError(err){
-      console.error(err);
-      el.err.style.display = "block";
-      el.err.textContent =
-        "Failed to load.\n\n" +
-        (err && err.message ? err.message : String(err)) +
-        "\n\nQuick checks:\n" +
-        "1) Open /vendor/pdfjs/pdf.min.js → should show code\n" +
-        "2) Open /vendor/pdfjs/pdf.worker.min.js → should show code\n" +
-        `3) Open ${pdfParam} directly → should download/view\n`;
-    }
-
+    /* ---------- Render ---------- */
     async function renderView(){
       el.view.innerHTML = "";
+      const fit = calcFitScale();
+      const scale = clamp(fit * state.userZoom, 0.25, 4);
 
-      if(state.mode === "single"){
-        const c = await renderCanvas(state.current, state.scale);
+      if (state.mode === "single"){
+        const c = await renderCanvas(state.current, scale);
+        c.style.maxWidth = "100%";
         el.view.appendChild(c);
-      }else{
+      } else {
         const left = toLeft(state.current);
         const right = left + 1;
-        const cL = await renderCanvas(left, state.scale);
+
+        const cL = await renderCanvas(left, scale);
+        cL.style.maxWidth = "49%";
         el.view.appendChild(cL);
-        if(right <= state.total){
-          const cR = await renderCanvas(right, state.scale);
+
+        if (right <= state.total){
+          const cR = await renderCanvas(right, scale);
+          cR.style.maxWidth = "49%";
           el.view.appendChild(cR);
         }
         state.current = left;
@@ -138,56 +172,42 @@
 
     async function renderThumbs(){
       el.thumbs.innerHTML = "";
-      for(let i=1;i<=state.total;i++){
+      for (let i = 1; i <= state.total; i++){
         const c = await renderCanvas(i, 0.25);
         const a = document.createElement("a");
         a.href="#"; a.className="page-thumb"; a.dataset.index=i;
-        a.appendChild(canvasToImg(c));
-        a.onclick = (e)=>{ e.preventDefault(); state.current=i; renderView(); };
+        const img = new Image(); img.src = c.toDataURL("image/jpeg", 0.8); img.alt = "Page "+i;
+        a.appendChild(img);
+        a.onclick = e => { e.preventDefault(); state.current = i; renderView(); };
         el.thumbs.appendChild(a);
       }
       markThumb(state.current);
     }
 
-    function canvasToImg(canvas){
-      const img = new Image();
-      img.src = canvas.toDataURL("image/jpeg",0.8);
-      img.alt = "Thumbnail";
-      return img;
-    }
-
-    function toLeft(i){ return i%2===1 ? i : i-1; }
-
     async function renderCanvas(n, scale){
       const page = await state.pdf.getPage(n);
-      const vp = page.getViewport({scale});
+      const vp = page.getViewport({ scale });
       const c = document.createElement("canvas");
       const ctx = c.getContext("2d");
       c.width = Math.floor(vp.width);
       c.height = Math.floor(vp.height);
-      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
       return c;
     }
 
-    function updateInfo(){ el.info.textContent = `Page ${state.current} / ${state.total}`; }
-
-    function markThumb(i){
-      document.querySelectorAll(".page-thumb").forEach(a=>a.classList.remove("active"));
-      const t = document.querySelector(`.page-thumb[data-index="${i}"]`);
-      if(t) t.classList.add("active");
-    }
-
+    /* ---------- UI ---------- */
     function prev(){
-      if(state.mode==="single") state.current=Math.max(1,state.current-1);
-      else state.current=Math.max(1,toLeft(state.current)-2);
+      if (state.mode === "single") state.current = Math.max(1, state.current - 1);
+      else state.current = Math.max(1, toLeft(state.current) - 2);
       renderView();
     }
-
     function next(){
-      if(state.mode==="single") state.current=Math.min(state.total,state.current+1);
-      else state.current=Math.min(state.total,toLeft(state.current)+2);
+      if (state.mode === "single") state.current = Math.min(state.total, state.current + 1);
+      else state.current = Math.min(state.total, toLeft(state.current) + 2);
       renderView();
     }
+    function updateInfo(){ el.info.textContent = `Page ${state.current} / ${state.total}`; }
+    function toLeft(i){ return i % 2 === 1 ? i : i - 1; }
 
     function wireUI(){
       el.prev.onclick = prev;
@@ -196,27 +216,54 @@
       el.single.onclick = ()=>{ state.mode="single"; renderView(); };
       el.spread.onclick = ()=>{ state.mode="spread"; renderView(); };
 
-      el.zin.onclick = ()=>{ state.scale=Math.min(3,state.scale+0.25); renderView(); };
-      el.zout.onclick = ()=>{ state.scale=Math.max(0.5,state.scale-0.25); renderView(); };
+      el.zin.onclick  = ()=>{ state.userZoom = clamp(state.userZoom + 0.1, 0.5, 3); renderView(); };
+      el.zout.onclick = ()=>{ state.userZoom = clamp(state.userZoom - 0.1, 0.5, 3); renderView(); };
 
       el.fs.onclick = ()=>{
         const host = document.querySelector(".flipbook");
-        if(!document.fullscreenElement) (host.requestFullscreen||document.documentElement.requestFullscreen).call(host||document.documentElement);
+        if (!document.fullscreenElement) (host.requestFullscreen || document.documentElement.requestFullscreen).call(host || document.documentElement);
         else document.exitFullscreen();
       };
 
       el.tglThumbs.onclick = ()=> el.thumbs.classList.toggle("hidden");
 
-      window.addEventListener("keydown",e=>{
-        if(e.key==="ArrowLeft") prev();
-        if(e.key==="ArrowRight") next();
+      window.addEventListener("keydown", e=>{
+        if (e.key === "ArrowLeft") prev();
+        if (e.key === "ArrowRight") next();
+        if (e.key === "+") { el.zin.click(); }
+        if (e.key === "-") { el.zout.click(); }
       });
 
-      window.addEventListener("hashchange",()=>{
+      window.addEventListener("hashchange", ()=>{
         const n = parseInt(location.hash.replace("#p=",""),10);
-        if(!isNaN(n)){ state.current=Math.min(Math.max(1,n),state.total); renderView(); }
+        if (!isNaN(n)) { state.current = clamp(n, 1, state.total); renderView(); }
       });
     }
+
+    /* ---------- Utils ---------- */
+    async function fetchBytes(url){
+      const r = await fetch(url, { cache: "reload" });
+      if (!r.ok) throw new Error(`Fetch ${r.status} for: ${url}`);
+      return new Uint8Array(await r.arrayBuffer());
+    }
+    function showError(err){
+      console.error(err);
+      el.err.style.display = "block";
+      el.err.textContent =
+        "Failed to load.\n\n" +
+        (err && err.message ? err.message : String(err)) +
+        "\n\nQuick checks:\n" +
+        "• /vendor/pdfjs/pdf.min.js → should show code\n" +
+        "• /vendor/pdfjs/pdf.worker.min.js → should show code\n" +
+        `• ${pdfParam} → should open directly\n`;
+    }
+    function markThumb(i){
+      document.querySelectorAll(".page-thumb").forEach(a=>a.classList.remove("active"));
+      const t = document.querySelector(`.page-thumb[data-index="${i}"]`);
+      if (t) t.classList.add("active");
+    }
+    function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+    function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
   </script>
 </body>
 </html>

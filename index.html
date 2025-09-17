@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="styles.css" />
 
   <!-- PageFlip CSS (LOCAL) -->
-  <!-- This is your local fallback/minimal CSS at vendor/pageflip/page-flip.min.css -->
   <link rel="stylesheet" href="vendor/pageflip/page-flip.min.css" />
 </head>
 <body>
@@ -41,14 +40,13 @@
   <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
   <script>
-    // Use the local worker to avoid any CORS/worker-origin problems
     pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   </script>
 
-  <!-- PageFlip (LOCAL JS) -->
+  <!-- PageFlip (LOCAL) -->
   <script src="vendor/pageflip/page-flip.browser.min.js"></script>
 
-  <!-- App logic (new filename to defeat cache): main.v6.js -->
-  <script src="main.v6.js"></script>
+  <!-- App (NEW filename to defeat cache) -->
+  <script src="main.v7.js"></script>
 </body>
 </html>

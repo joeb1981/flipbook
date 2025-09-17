@@ -46,6 +46,7 @@
   <script src="vendor/pageflip/page-flip.browser.min.js"></script>
 
   <!-- Your app logic (CORS-proof + PageFlip-safe) -->
-  <script src="main.js"></script>
+  <!-- cache-buster ?v=4 ensures the browser fetches the new main.js -->
+  <script src="main.js?v=4"></script>
 </body>
 </html>

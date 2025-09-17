@@ -1,19 +1,17 @@
-/* Flipbook App
-   - Loads ?pdf=<url> (prefer pdfs in /pdfs to avoid CORS)
-   - Renders thumbnails
-   - Builds page-flip with single/spread modes, zoom, fullscreen, nav
+/* Flipbook App (FORCED PDF + CORS-proof)
+   - Ignores ?pdf= and always loads pdfs/ironworks.pdf
+   - Fetches bytes and passes to PDF.js via { data: Uint8Array }
 */
 
-const qs = new URLSearchParams(location.search);
-const pdfUrl = qs.get("pdf") || "pdfs/sample.pdf"; // default if no ?pdf= given
+const pdfAbsoluteUrl = new URL("pdfs/ironworks.pdf", location.href).href;
 
 const state = {
   pdf: null,
   total: 0,
-  scale: 1,          // affects render sharpness
-  mode: "spread",    // "single" or "spread"
-  pages: [],         // {index, imgSrc}
-  currentIndex: 1    // 1-based
+  scale: 1,
+  mode: "spread",
+  pages: [],
+  currentIndex: 1
 };
 
 const el = {
@@ -33,24 +31,33 @@ const el = {
 let pageFlip;
 
 init().catch(err => {
-  console.error("PDF load error:", err);
-  alert(
-    "Failed to load PDF.\n\n" +
-    "Troubleshoot:\n" +
-    "1) Confirm the PDF path is correct (?pdf=pdfs/ironworks.pdf).\n" +
-    "2) Make sure the PDF really exists in your repo.\n" +
-    "3) Hard refresh or try incognito mode."
-  );
+  console.error("Startup error:", err);
+  alert("Failed to load PDF.\n\nOpen DevTools (F12) → Console to see the exact error.");
 });
 
 async function init() {
-  state.pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+  ensurePdfJsPresent();
+
+  const bytes = await fetchPdfBytes(pdfAbsoluteUrl);
+  state.pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   state.total = state.pdf.numPages;
 
-  await renderAllThumbnails();     // sidebar thumbs
-  await buildFlipbook();           // main viewer
-
+  await renderAllThumbnails();
+  await buildFlipbook();
   wireUI();
+}
+
+function ensurePdfJsPresent() {
+  if (!window.pdfjsLib) {
+    throw new Error("pdfjsLib not found. Check vendor/pdfjs/pdf.min.js is loading.");
+  }
+}
+
+async function fetchPdfBytes(url) {
+  const resp = await fetch(url, { cache: "reload" });
+  if (!resp.ok) throw new Error(`Fetch failed (${resp.status}) for: ${url}`);
+  const buf = await resp.arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 async function renderAllThumbnails() {
@@ -62,31 +69,25 @@ async function renderAllThumbnails() {
     item.className = "page-thumb";
     item.dataset.index = i;
     item.innerHTML = `<img src="${thumb}" alt="Page ${i}">`;
-    item.addEventListener("click", (e) => {
-      e.preventDefault();
-      goToPage(i);
-    });
+    item.addEventListener("click", e => { e.preventDefault(); goToPage(i); });
     el.thumbs.appendChild(item);
   }
   markActiveThumb(1);
 }
 
 async function buildFlipbook() {
-  el.flipbook.innerHTML = ""; // reset
+  el.flipbook.innerHTML = "";
 
-  // Prepare pages as images
   state.pages = [];
   for (let i = 1; i <= state.total; i++) {
     const imgSrc = await renderPageToImage(i, state.scale);
     state.pages.push({ index: i, imgSrc });
   }
 
-  // Container
   const book = document.createElement("div");
   book.className = "my-book";
   el.flipbook.appendChild(book);
 
-  // Add page elements
   for (const p of state.pages) {
     const pageEl = document.createElement("div");
     pageEl.className = "page";
@@ -94,7 +95,6 @@ async function buildFlipbook() {
     book.appendChild(pageEl);
   }
 
-  // Init PageFlip
   pageFlip = new St.PageFlip(book, {
     width: 800,
     height: 1100,
@@ -109,7 +109,7 @@ async function buildFlipbook() {
     swipeAngle: 10,
   });
 
-  pageFlip.on("flip", (e) => {
+  pageFlip.on("flip", e => {
     const pageNum = e.data + 1;
     state.currentIndex = pageNum;
     updatePageInfo();
@@ -127,7 +127,7 @@ function setMode(mode) {
     height: 1100,
     size: "stretch",
     maxShadowOpacity: 0.2,
-    singlePageMode: (mode === "single")
+    singlePageMode: (mode === "single"),
   });
 }
 
@@ -162,36 +162,15 @@ function wireUI() {
   el.btnNext.addEventListener("click", () => pageFlip.flipNext());
   el.btnSingle.addEventListener("click", () => setMode("single"));
   el.btnSpread.addEventListener("click", () => setMode("spread"));
-
-  el.btnZoomIn.addEventListener("click", async () => {
-    state.scale = Math.min(3, state.scale + 0.25);
-    await rebuildWithNewScale();
-  });
-  el.btnZoomOut.addEventListener("click", async () => {
-    state.scale = Math.max(0.5, state.scale - 0.25);
-    await rebuildWithNewScale();
-  });
-
+  el.btnZoomIn.addEventListener("click", async () => { state.scale = Math.min(3, state.scale + 0.25); await rebuildWithNewScale(); });
+  el.btnZoomOut.addEventListener("click", async () => { state.scale = Math.max(0.5, state.scale - 0.25); await rebuildWithNewScale(); });
   el.btnFullscreen.addEventListener("click", () => {
     const root = document.documentElement;
-    if (!document.fullscreenElement) {
-      (el.flipbook.requestFullscreen || root.requestFullscreen).call(el.flipbook || root);
-    } else {
-      document.exitFullscreen();
-    }
+    if (!document.fullscreenElement) (el.flipbook.requestFullscreen || root.requestFullscreen).call(el.flipbook || root);
+    else document.exitFullscreen();
   });
-
-  el.btnThumbs.addEventListener("click", () => {
-    el.thumbs.classList.toggle("hidden");
-  });
-
-  // Keyboard shortcuts
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") pageFlip.flipPrev();
-    if (e.key === "ArrowRight") pageFlip.flipNext();
-  });
-
-  // Support deep links like #p=12
+  el.btnThumbs.addEventListener("click", () => { el.thumbs.classList.toggle("hidden"); });
+  window.addEventListener("keydown", e => { if (e.key === "ArrowLeft") pageFlip.flipPrev(); if (e.key === "ArrowRight") pageFlip.flipNext(); });
   window.addEventListener("hashchange", () => {
     const page = parseInt(location.hash.replace("#p=", ""), 10);
     if (!isNaN(page)) goToPage(page);

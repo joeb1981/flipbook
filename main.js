@@ -1,4 +1,4 @@
-/* Flipbook App (LOCAL libs + CORS-proof)
+/* Flipbook App (LOCAL libs + CORS-proof + guards)
    - Accepts ?pdf=<path-or-URL>, defaults to pdfs/ironworks.pdf
    - Fetches PDF as bytes -> PDF.js { data: Uint8Array } (bypasses CORS)
    - Safe if PageFlip not loaded (falls back to flat pages)
@@ -139,13 +139,13 @@ async function buildFlipbook() {
     markActiveThumb(pageNum);
   });
 
-  setMode(state.mode);
+  setMode(state.mode);   // safe now
   updatePageInfo();
 }
 
 function setMode(mode) {
   state.mode = mode;
-  if (!pageFlip) return; // fallback view
+  if (!pageFlip) return; // guard: no instance → nothing to update
   pageFlip.update({
     width: 800,
     height: 1100,
@@ -173,12 +173,15 @@ function updatePageInfo() {
 
 function goToPage(i) {
   const target = Math.min(Math.max(1, i), state.total);
-  if (pageFlip) pageFlip.flip(target - 1);
-  else {
+  if (pageFlip) {
+    pageFlip.flip(target - 1);
+  } else {
     // simple scroll to image in fallback mode
     const node = el.flipbook.querySelectorAll(".page")[target - 1];
     if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
-    state.currentIndex = target; updatePageInfo(); markActiveThumb(target);
+    state.currentIndex = target;
+    updatePageInfo();
+    markActiveThumb(target);
   }
 }
 

@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <title>Flipbook Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="styles.css">
 
   <!-- StPageFlip (for page-turn effect) -->
@@ -38,17 +37,16 @@
     </noscript>
   </div>
 
-  <!-- PDF.js (core + worker) -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
+  <!-- PDF.js (LOCAL copies you uploaded to vendor/pdfjs/) -->
+  <script src="vendor/pdfjs/pdf.min.js"></script>
   <script>
-    // Point to worker on the same CDN version
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.js";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   </script>
 
-  <!-- StPageFlip -->
+  <!-- StPageFlip (for page-turn effect) -->
   <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
-  <!-- App -->
+  <!-- Main App -->
   <script src="main.js"></script>
 </body>
 </html>

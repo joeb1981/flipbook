@@ -1,7 +1,8 @@
-/* Flipbook App (LOCAL libs + CORS-proof + guards)
+/* Flipbook App (LOCAL libs + CORS-proof + no early update)
    - Accepts ?pdf=<path-or-URL>, defaults to pdfs/ironworks.pdf
-   - Fetches PDF as bytes -> PDF.js { data: Uint8Array } (bypasses CORS)
-   - Safe if PageFlip not loaded (falls back to flat pages)
+   - Loads PDF via bytes (no CORS issues)
+   - Sets Single/Spread at init (no immediate update call)
+   - If user toggles mode, we rebuild safely
 */
 
 const qs = new URLSearchParams(location.search);
@@ -41,15 +42,13 @@ init().catch(err => {
 async function init() {
   ensurePdfJsPresent();
 
-  // 1) Fetch PDF bytes (works even across origins)
+  // Fetch PDF bytes (CORS-proof)
   const bytes = await fetchPdfBytes(pdfAbsoluteUrl);
-
-  // 2) Load with PDF.js using data
   state.pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   state.total = state.pdf.numPages;
 
   await renderAllThumbnails();
-  await buildFlipbook();
+  await buildFlipbook();   // does NOT call pageFlip.update()
   wireUI();
 }
 
@@ -88,16 +87,17 @@ function pageFlipAvailable() {
 }
 
 async function buildFlipbook() {
+  // Clear container
   el.flipbook.innerHTML = "";
 
-  // Render pages to images
+  // Render pages to images at current scale
   state.pages = [];
   for (let i = 1; i <= state.total; i++) {
     const imgSrc = await renderPageToImage(i, state.scale);
     state.pages.push({ index: i, imgSrc });
   }
 
-  // DOM
+  // Build DOM
   const book = document.createElement("div");
   book.className = "my-book";
   el.flipbook.appendChild(book);
@@ -117,7 +117,7 @@ async function buildFlipbook() {
     return;
   }
 
-  // Init PageFlip
+  // Init PageFlip; set mode here so we don't call update() immediately
   pageFlip = new St.PageFlip(book, {
     width: 800,
     height: 1100,
@@ -128,8 +128,9 @@ async function buildFlipbook() {
     mobileScrollSupport: true,
     flippingTime: 600,
     autoSize: true,
-    startPage: 0,
+    startPage: Math.max(0, state.currentIndex - 1),
     swipeAngle: 10,
+    singlePageMode: (state.mode === "single"),  // ← set here, no update() call
   });
 
   pageFlip.on("flip", (e) => {
@@ -139,20 +140,11 @@ async function buildFlipbook() {
     markActiveThumb(pageNum);
   });
 
-  setMode(state.mode);   // safe now
   updatePageInfo();
 }
 
-function setMode(mode) {
-  state.mode = mode;
-  if (!pageFlip) return; // guard: no instance → nothing to update
-  pageFlip.update({
-    width: 800,
-    height: 1100,
-    size: "stretch",
-    maxShadowOpacity: 0.2,
-    singlePageMode: (mode === "single"),
-  });
+function updatePageInfo() {
+  el.pageInfo.textContent = `Page ${state.currentIndex} / ${state.total}`;
 }
 
 /* ---------- Rendering ---------- */
@@ -167,16 +159,13 @@ async function renderPageToImage(pageNumber, scale = 1) {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-function updatePageInfo() {
-  el.pageInfo.textContent = `Page ${state.currentIndex} / ${state.total}`;
-}
-
+/* ---------- Navigation ---------- */
 function goToPage(i) {
   const target = Math.min(Math.max(1, i), state.total);
   if (pageFlip) {
     pageFlip.flip(target - 1);
   } else {
-    // simple scroll to image in fallback mode
+    // fallback: scroll flat image into view
     const node = el.flipbook.querySelectorAll(".page")[target - 1];
     if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
     state.currentIndex = target;
@@ -195,16 +184,18 @@ function markActiveThumb(i) {
 function wireUI() {
   el.btnPrev.addEventListener("click", () => pageFlip ? pageFlip.flipPrev() : goToPage(state.currentIndex - 1));
   el.btnNext.addEventListener("click", () => pageFlip ? pageFlip.flipNext() : goToPage(state.currentIndex + 1));
-  el.btnSingle.addEventListener("click", () => setMode("single"));
-  el.btnSpread.addEventListener("click", () => setMode("spread"));
+
+  // Instead of update(), rebuild on mode change (rock-solid)
+  el.btnSingle.addEventListener("click", async () => { state.mode = "single"; await rebuildPreservingPage(); });
+  el.btnSpread.addEventListener("click", async () => { state.mode = "spread"; await rebuildPreservingPage(); });
 
   el.btnZoomIn.addEventListener("click", async () => {
     state.scale = Math.min(3, state.scale + 0.25);
-    await rebuildWithNewScale();
+    await rebuildPreservingPage();
   });
   el.btnZoomOut.addEventListener("click", async () => {
     state.scale = Math.max(0.5, state.scale - 0.25);
-    await rebuildWithNewScale();
+    await rebuildPreservingPage();
   });
 
   el.btnFullscreen.addEventListener("click", () => {
@@ -220,14 +211,19 @@ function wireUI() {
     if (e.key === "ArrowRight") el.btnNext.click();
   });
 
+  // Deep links like #p=12
   window.addEventListener("hashchange", () => {
     const page = parseInt(location.hash.replace("#p=", ""), 10);
     if (!isNaN(page)) goToPage(page);
   });
 }
 
-async function rebuildWithNewScale() {
+async function rebuildPreservingPage() {
   const saveIndex = state.currentIndex;
+  try {
+    if (pageFlip && typeof pageFlip.destroy === "function") pageFlip.destroy();
+  } catch {}
+  pageFlip = null;
   await buildFlipbook();
   goToPage(saveIndex);
 }

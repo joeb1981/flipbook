@@ -35,11 +35,42 @@ body {
 .viewer { flex: 1; display: grid; grid-template-columns: 240px 1fr; gap: .75rem; padding: .75rem; }
 .thumbs { overflow-y: auto; border-right: 1px solid #1f2937; padding-right: .5rem; }
 .thumbs.hidden { display: none; }
-.flipbook { height: calc(100vh - 72px - 1.5rem); overflow: hidden; }
+
+/* Center the page view */
+.flipbook {
+  height: calc(100vh - 72px - 1.5rem); /* minus header & padding */
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.page-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  max-width: 95vw;
+  max-height: 100%;
+}
+
+/* Canvas styling for pages */
+.page-view canvas {
+  max-width: 48vw;      /* 2 pages fit side-by-side on spread */
+  max-height: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: #111827;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
 
 /* Thumbs */
-.page-thumb { display: block; margin: 0 0 .5rem; cursor: pointer; border: 1px solid #374151; border-radius: .5rem; overflow: hidden; }
+.page-thumb {
+  display: block; margin: 0 0 .5rem; cursor: pointer;
+  border: 1px solid #374151; border-radius: .5rem; overflow: hidden;
+}
 .page-thumb img { width: 100%; display: block; }
 .page-thumb.active { border-color: var(--accent); }
 
-@media (max-width: 900px) { .viewer { grid-template-columns: 1fr; } }
+/* Responsive: hide sidebar on small screens */
+@media (max-width: 900px) {
+  .viewer { grid-template-columns: 1fr; }
+  .page-view canvas { max-width: 95vw; }
+}

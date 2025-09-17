@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <title>Flipbook Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- App styles -->
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- PageFlip (LOCAL) -->
+  <!-- PageFlip CSS (LOCAL – your fallback CSS file) -->
   <link rel="stylesheet" href="vendor/pageflip/page-flip.min.css" />
 </head>
 <body>
@@ -18,8 +18,8 @@
         <button id="btnNext" aria-label="Next page">▶</button>
       </div>
       <div class="right">
-        <button id="btnSingle">Single</button>
-        <button id="btnSpread">Spread</button>
+        <button id="btnSingle" title="Single-page view">Single</button>
+        <button id="btnSpread" title="Spread (2-page) view">Spread</button>
         <button id="btnZoomIn" aria-label="Zoom in">＋</button>
         <button id="btnZoomOut" aria-label="Zoom out">－</button>
         <button id="btnFullscreen" aria-label="Fullscreen">⛶</button>
@@ -38,13 +38,14 @@
   <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
   <script>
+    // Ensure the worker is same-origin to avoid CORS issues
     pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   </script>
 
   <!-- PageFlip (LOCAL) -->
   <script src="vendor/pageflip/page-flip.browser.min.js"></script>
 
-  <!-- App -->
+  <!-- Your app logic (CORS-proof + PageFlip-safe) -->
   <script src="main.js"></script>
 </body>
-</htm
+</html>

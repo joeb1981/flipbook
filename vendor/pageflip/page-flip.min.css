@@ -1,0 +1,38 @@
+/* Minimal fallback styles for StPageFlip
+   Works without any CDN; safe if you later replace with the official CSS.
+   Keep it small: sizing, basic shadows, and smoothness.
+*/
+
+/* Ensure the flip area fills its container */
+.my-book, .stf__wrapper, .stf__block, .stf__item, .stf__page, .stf__canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Rounded corners + subtle shadow so pages look like cards */
+.stf__item, .stf__page {
+  border-radius: 10px;
+  overflow: hidden;
+  background: #111827;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+
+/* Keep images crisp and contained */
+.stf__page img, .page-content img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #0f172a;
+}
+
+/* Slightly nicer transitions */
+.stf__wrapper, .stf__page, .stf__canvas {
+  transition: transform .6s ease, box-shadow .3s ease;
+}
+
+/* Hide any accidental overflow */
+.stf__wrapper { overflow: hidden; }
+
+/* Optional: cursor hints on edges (not always used by the lib) */
+.stf__l, .stf__r { cursor: pointer; }

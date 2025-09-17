@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <title>Flipbook Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css" />
 
-  <!-- StPageFlip (for page-turn effect) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/page-flip/dist/css/page-flip.min.css" />
+  <!-- PageFlip (LOCAL) -->
+  <link rel="stylesheet" href="vendor/pageflip/page-flip.min.css" />
 </head>
 <body>
   <div id="app">
@@ -32,21 +32,19 @@
       <div id="flipbook" class="flipbook"></div>
     </div>
 
-    <noscript>
-      Please enable JavaScript to view the flipbook.
-    </noscript>
+    <noscript>Please enable JavaScript to view the flipbook.</noscript>
   </div>
 
-  <!-- PDF.js (LOCAL copies you uploaded to vendor/pdfjs/) -->
+  <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   </script>
 
-  <!-- StPageFlip (for page-turn effect) -->
-  <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+  <!-- PageFlip (LOCAL) -->
+  <script src="vendor/pageflip/page-flip.browser.min.js"></script>
 
-  <!-- Main App -->
+  <!-- App -->
   <script src="main.js"></script>
 </body>
-</html>
+</htm

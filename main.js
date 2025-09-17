@@ -5,14 +5,14 @@
 */
 
 const qs = new URLSearchParams(location.search);
-const pdfUrl = qs.get("pdf") || "pdfs/sample.pdf"; // change or pass via ?pdf=
+const pdfUrl = qs.get("pdf") || "pdfs/sample.pdf"; // default if no ?pdf= given
 
 const state = {
   pdf: null,
   total: 0,
-  scale: 1,          // affects canvas render size
+  scale: 1,          // affects render sharpness
   mode: "spread",    // "single" or "spread"
-  pages: [],         // {index, canvas, imgSrc}
+  pages: [],         // {index, imgSrc}
   currentIndex: 1    // 1-based
 };
 
@@ -33,15 +33,21 @@ const el = {
 let pageFlip;
 
 init().catch(err => {
-  alert("Failed to load PDF. If using a remote URL, ensure it allows cross-origin access or host the PDF in /pdfs.");
-  console.error(err);
+  console.error("PDF load error:", err);
+  alert(
+    "Failed to load PDF.\n\n" +
+    "Troubleshoot:\n" +
+    "1) Confirm the PDF path is correct (?pdf=pdfs/ironworks.pdf).\n" +
+    "2) Make sure the PDF really exists in your repo.\n" +
+    "3) Hard refresh or try incognito mode."
+  );
 });
 
 async function init() {
   state.pdf = await pdfjsLib.getDocument(pdfUrl).promise;
   state.total = state.pdf.numPages;
 
-  await renderAllThumbnails();     // quick thumbs
+  await renderAllThumbnails();     // sidebar thumbs
   await buildFlipbook();           // main viewer
 
   wireUI();
@@ -50,7 +56,7 @@ async function init() {
 async function renderAllThumbnails() {
   el.thumbs.innerHTML = "";
   for (let i = 1; i <= state.total; i++) {
-    const thumb = await renderPageToImage(i, 0.3); // tiny for speed
+    const thumb = await renderPageToImage(i, 0.3);
     const item = document.createElement("a");
     item.href = "#";
     item.className = "page-thumb";
@@ -68,19 +74,19 @@ async function renderAllThumbnails() {
 async function buildFlipbook() {
   el.flipbook.innerHTML = ""; // reset
 
-  // Prepare pages as images (render once at decent scale)
+  // Prepare pages as images
   state.pages = [];
   for (let i = 1; i <= state.total; i++) {
     const imgSrc = await renderPageToImage(i, state.scale);
     state.pages.push({ index: i, imgSrc });
   }
 
-  // Build DOM for PageFlip
+  // Container
   const book = document.createElement("div");
   book.className = "my-book";
   el.flipbook.appendChild(book);
 
-  // Create page elements
+  // Add page elements
   for (const p of state.pages) {
     const pageEl = document.createElement("div");
     pageEl.className = "page";
@@ -90,7 +96,7 @@ async function buildFlipbook() {
 
   // Init PageFlip
   pageFlip = new St.PageFlip(book, {
-    width: 800,          // base size; PageFlip will scale
+    width: 800,
     height: 1100,
     size: "stretch",
     maxShadowOpacity: 0.2,
@@ -110,30 +116,24 @@ async function buildFlipbook() {
     markActiveThumb(pageNum);
   });
 
-  setMode(state.mode); // "single" or "spread"
-
+  setMode(state.mode);
   updatePageInfo();
 }
 
 function setMode(mode) {
   state.mode = mode;
   pageFlip.update({
-    showCover: false,
     width: 800,
     height: 1100,
     size: "stretch",
     maxShadowOpacity: 0.2,
-    useMouseEvents: true,
-    mobileScrollSupport: true,
-    drawShadow: true,
-    // “singlePageMode” forces single; otherwise it shows 2-page spreads when wide
     singlePageMode: (mode === "single")
   });
 }
 
 async function renderPageToImage(pageNumber, scale = 1) {
   const page = await state.pdf.getPage(pageNumber);
-  const viewport = page.getViewport({ scale: 1.5 * scale }); // 1.5x good balance
+  const viewport = page.getViewport({ scale: 1.5 * scale });
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   canvas.width = viewport.width;
@@ -157,7 +157,6 @@ function markActiveThumb(i) {
   if (active) active.classList.add("active");
 }
 
-// UI wiring
 function wireUI() {
   el.btnPrev.addEventListener("click", () => pageFlip.flipPrev());
   el.btnNext.addEventListener("click", () => pageFlip.flipNext());
@@ -186,13 +185,13 @@ function wireUI() {
     el.thumbs.classList.toggle("hidden");
   });
 
-  // Keyboard nav
+  // Keyboard shortcuts
   window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") pageFlip.flipPrev();
     if (e.key === "ArrowRight") pageFlip.flipNext();
   });
 
-  // Handle deep links like ?pdf=...
+  // Support deep links like #p=12
   window.addEventListener("hashchange", () => {
     const page = parseInt(location.hash.replace("#p=", ""), 10);
     if (!isNaN(page)) goToPage(page);

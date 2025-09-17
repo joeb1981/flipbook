@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Flipbook Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- StPageFlip (for page-turn effect) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/page-flip/dist/css/page-flip.min.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="left">
+        <button id="btnPrev" aria-label="Previous page">◀</button>
+        <span id="pageInfo">Page 1 / ?</span>
+        <button id="btnNext" aria-label="Next page">▶</button>
+      </div>
+      <div class="right">
+        <button id="btnSingle">Single</button>
+        <button id="btnSpread">Spread</button>
+        <button id="btnZoomIn" aria-label="Zoom in">＋</button>
+        <button id="btnZoomOut" aria-label="Zoom out">－</button>
+        <button id="btnFullscreen" aria-label="Fullscreen">⛶</button>
+        <button id="btnThumbs" aria-label="Toggle thumbnails">☰</button>
+      </div>
+    </header>
+
+    <div class="viewer">
+      <aside id="thumbs" class="thumbs hidden"></aside>
+      <div id="flipbook" class="flipbook"></div>
+    </div>
+
+    <noscript>
+      Please enable JavaScript to view the flipbook.
+    </noscript>
+  </div>
+
+  <!-- PDF.js (core + worker) -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
+  <script>
+    // Point to worker on the same CDN version
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.js";
+  </script>
+
+  <!-- StPageFlip -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+
+  <!-- App -->
+  <script src="main.js"></script>
+</body>
+</html>

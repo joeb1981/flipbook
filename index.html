@@ -2,9 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Flipbook Viewer</title>
+  <title>Flipbook Viewer (Solid PDF.js)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    :root{--bg:#0f172a;--panel:#111827;--ink:#e5e7eb;--ink-dim:#9ca3af;--accent:#38bdf8}
+    *{box-sizing:border-box}html,body{margin:0;height:100%}body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+    #app{display:flex;flex-direction:column;height:100vh}
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid #1f2937;padding:.5rem .75rem;gap:.5rem;position:sticky;top:0;z-index:10}
+    .topbar .left,.topbar .right{display:flex;align-items:center;gap:.5rem}
+    .topbar button{background:#1f2937;color:var(--ink);border:1px solid #374151;border-radius:.5rem;padding:.4rem .6rem;cursor:pointer;font-size:14px}
+    .topbar button:hover{border-color:var(--accent);color:var(--accent)}
+    #pageInfo{color:var(--ink-dim);font-size:14px}
+    .viewer{flex:1;display:grid;grid-template-columns:240px 1fr;gap:.75rem;padding:.75rem}
+    .thumbs{overflow-y:auto;border-right:1px solid #1f2937;padding-right:.5rem}
+    .thumbs.hidden{display:none}
+    .flipbook{height:calc(100vh - 72px - 1.5rem);overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .page-view{display:flex;align-items:center;justify-content:center;gap:1rem;max-width:95vw;max-height:100%}
+    .page-view canvas{max-width:48vw;max-height:100%;height:auto;border-radius:10px;background:#111827;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+    .page-thumb{display:block;margin:0 0 .5rem;cursor:pointer;border:1px solid #374151;border-radius:.5rem;overflow:hidden}
+    .page-thumb img{width:100%;display:block}
+    .page-thumb.active{border-color:var(--accent)}
+    @media (max-width:900px){.viewer{grid-template-columns:1fr}.page-view canvas{max-width:95vw}}
+    #err{white-space:pre-wrap;background:#7f1d1d;color:#fff;padding:10px;border-radius:8px;margin:.75rem;display:none}
+  </style>
 </head>
 <body>
   <div id="app">
@@ -24,11 +45,11 @@
       </div>
     </header>
 
+    <div id="err"></div>
+
     <div class="viewer">
       <aside id="thumbs" class="thumbs hidden"></aside>
-      <div id="flipbook" class="flipbook">
-        <div id="pageView" class="page-view"></div>
-      </div>
+      <div class="flipbook"><div id="pageView" class="page-view"></div></div>
     </div>
 
     <noscript>Please enable JavaScript to view the flipbook.</noscript>
@@ -37,10 +58,165 @@
   <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
   <script>
+    // IMPORTANT: must match your repo path exactly (case-sensitive)
     pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   </script>
 
-  <!-- Main app (no external libs) -->
-  <script src="main.noflip.js"></script>
+  <script>
+    // ====== Minimal, robust viewer (no flip animation) ======
+    const qs = new URLSearchParams(location.search);
+    const pdfParam = qs.get("pdf") || "pdfs/ironworks.pdf";
+    const pdfURL = new URL(pdfParam, location.href).href;
+
+    const state = { pdf:null, total:0, scale:1.25, mode:"spread", current:1 };
+
+    const el = {
+      err: document.getElementById("err"),
+      view: document.getElementById("pageView"),
+      thumbs: document.getElementById("thumbs"),
+      info: document.getElementById("pageInfo"),
+      prev: document.getElementById("btnPrev"),
+      next: document.getElementById("btnNext"),
+      single: document.getElementById("btnSingle"),
+      spread: document.getElementById("btnSpread"),
+      zin: document.getElementById("btnZoomIn"),
+      zout: document.getElementById("btnZoomOut"),
+      fs: document.getElementById("btnFullscreen"),
+      tglThumbs: document.getElementById("btnThumbs"),
+    };
+
+    boot().catch(showError);
+
+    async function boot(){
+      const bytes = await fetchBytes(pdfURL);
+      state.pdf = await pdfjsLib.getDocument({data:bytes}).promise;
+      state.total = state.pdf.numPages;
+
+      await renderThumbs();
+      await renderView();
+      wireUI();
+      updateInfo();
+    }
+
+    async function fetchBytes(url){
+      const r = await fetch(url,{cache:"reload"});
+      if(!r.ok) throw new Error(`Fetch ${r.status} for: ${url}`);
+      return new Uint8Array(await r.arrayBuffer());
+    }
+
+    function showError(err){
+      console.error(err);
+      el.err.style.display = "block";
+      el.err.textContent =
+        "Failed to load.\n\n" +
+        (err && err.message ? err.message : String(err)) +
+        "\n\nQuick checks:\n" +
+        "1) Open /vendor/pdfjs/pdf.min.js → should show code\n" +
+        "2) Open /vendor/pdfjs/pdf.worker.min.js → should show code\n" +
+        `3) Open ${pdfParam} directly → should download/view\n`;
+    }
+
+    async function renderView(){
+      el.view.innerHTML = "";
+
+      if(state.mode === "single"){
+        const c = await renderCanvas(state.current, state.scale);
+        el.view.appendChild(c);
+      }else{
+        const left = toLeft(state.current);
+        const right = left + 1;
+        const cL = await renderCanvas(left, state.scale);
+        el.view.appendChild(cL);
+        if(right <= state.total){
+          const cR = await renderCanvas(right, state.scale);
+          el.view.appendChild(cR);
+        }
+        state.current = left;
+      }
+      updateInfo(); markThumb(state.current);
+    }
+
+    async function renderThumbs(){
+      el.thumbs.innerHTML = "";
+      for(let i=1;i<=state.total;i++){
+        const c = await renderCanvas(i, 0.25);
+        const a = document.createElement("a");
+        a.href="#"; a.className="page-thumb"; a.dataset.index=i;
+        a.appendChild(canvasToImg(c));
+        a.onclick = (e)=>{ e.preventDefault(); state.current=i; renderView(); };
+        el.thumbs.appendChild(a);
+      }
+      markThumb(state.current);
+    }
+
+    function canvasToImg(canvas){
+      const img = new Image();
+      img.src = canvas.toDataURL("image/jpeg",0.8);
+      img.alt = "Thumbnail";
+      return img;
+    }
+
+    function toLeft(i){ return i%2===1 ? i : i-1; }
+
+    async function renderCanvas(n, scale){
+      const page = await state.pdf.getPage(n);
+      const vp = page.getViewport({scale});
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d");
+      c.width = Math.floor(vp.width);
+      c.height = Math.floor(vp.height);
+      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      return c;
+    }
+
+    function updateInfo(){ el.info.textContent = `Page ${state.current} / ${state.total}`; }
+
+    function markThumb(i){
+      document.querySelectorAll(".page-thumb").forEach(a=>a.classList.remove("active"));
+      const t = document.querySelector(`.page-thumb[data-index="${i}"]`);
+      if(t) t.classList.add("active");
+    }
+
+    function prev(){
+      if(state.mode==="single") state.current=Math.max(1,state.current-1);
+      else state.current=Math.max(1,toLeft(state.current)-2);
+      renderView();
+    }
+
+    function next(){
+      if(state.mode==="single") state.current=Math.min(state.total,state.current+1);
+      else state.current=Math.min(state.total,toLeft(state.current)+2);
+      renderView();
+    }
+
+    function wireUI(){
+      el.prev.onclick = prev;
+      el.next.onclick = next;
+
+      el.single.onclick = ()=>{ state.mode="single"; renderView(); };
+      el.spread.onclick = ()=>{ state.mode="spread"; renderView(); };
+
+      el.zin.onclick = ()=>{ state.scale=Math.min(3,state.scale+0.25); renderView(); };
+      el.zout.onclick = ()=>{ state.scale=Math.max(0.5,state.scale-0.25); renderView(); };
+
+      el.fs.onclick = ()=>{
+        const host = document.querySelector(".flipbook");
+        if(!document.fullscreenElement) (host.requestFullscreen||document.documentElement.requestFullscreen).call(host||document.documentElement);
+        else document.exitFullscreen();
+      };
+
+      el.tglThumbs.onclick = ()=> el.thumbs.classList.toggle("hidden");
+
+      window.addEventListener("keydown",e=>{
+        if(e.key==="ArrowLeft") prev();
+        if(e.key==="ArrowRight") next();
+      });
+
+      window.addEventListener("hashchange",()=>{
+        const n = parseInt(location.hash.replace("#p=",""),10);
+        if(!isNaN(n)){ state.current=Math.min(Math.max(1,n),state.total); renderView(); }
+      });
+    }
+  </script>
 </body>
 </html>

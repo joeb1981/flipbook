@@ -4,9 +4,7 @@
   <meta charset="utf-8" />
   <title>Flipbook Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- App styles -->
   <link rel="stylesheet" href="styles.css" />
-  <!-- PageFlip CSS (LOCAL – your fallback CSS file) -->
   <link rel="stylesheet" href="vendor/pageflip/page-flip.min.css" />
 </head>
 <body>
@@ -37,16 +35,12 @@
 
   <!-- PDF.js (LOCAL) -->
   <script src="vendor/pdfjs/pdf.min.js"></script>
-  <script>
-    // Ensure the worker is same-origin to avoid CORS issues
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
-  </script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";</script>
 
   <!-- PageFlip (LOCAL) -->
   <script src="vendor/pageflip/page-flip.browser.min.js"></script>
 
-  <!-- Your app logic (CORS-proof + PageFlip-safe) -->
-  <!-- cache-buster ?v=4 ensures the browser fetches the new main.js -->
-  <script src="main.js?v=4"></script>
+  <!-- App (cache-buster to avoid old cached file) -->
+  <script src="main.js?v=5"></script>
 </body>
 </html>
